@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -72,13 +71,18 @@ public class TRenderer : MonoBehaviour
         // Check to see if next states are ready for processing
         SimpleJSON.JSONNode[] transitionInfo = null;
         
-        if (this.states.IsEmpty || !this.states.TryDequeue(out transitionInfo)) {
+        if (this.states.IsEmpty || !this.states.TryDequeue(out transitionInfo))
+        {
             // Bg thread COULD be working -- it's pretty fast tho
             // if so, wait a bit.
-            // Otherwise, don't do shit.
-            if (this.stateLoaderThread.IsAlive) {
+            if (this.stateLoaderThread.IsAlive)
+            {
                 Thread.Sleep(50);
                 //Debug.Log("animating faster than bg thread, halp");
+            }
+            else
+            {
+                // nothing to transition to
             }
         }
         else {
@@ -165,6 +169,7 @@ public class TRenderer : MonoBehaviour
         }
         return coords;
     }
+
 
     public void moveAllToTarget(bool immediately = false)
     {
@@ -685,12 +690,15 @@ public class TRenderer : MonoBehaviour
             fromJSON(SimpleJSON.JSON.Parse(File.ReadAllText(FileBrowser.Result[0]+"\\0.json")));
 
             // kick off loading states for the new game; reset existing loading if needed
-            if (this.stateLoaderThread != null && this.stateLoaderThread.IsAlive) {
-                try {
+            if (this.stateLoaderThread != null && this.stateLoaderThread.IsAlive)
+            {
+                try
+                {
                     this.stateLoaderThread.Abort();
                     this.stateLoaderThread.Join(3000); // might need to wait a bit for bg thread to wrap up
                 }
-                catch (Exception) {
+                catch (Exception)
+                {
                     // whatever
                 }
             }
@@ -719,22 +727,27 @@ public class TRenderer : MonoBehaviour
         }
     }
 
-    Action CreateLoadStates(string levelPrefix, int maxTick) {
+    Action CreateLoadStates(string levelPrefix, int maxTick)
+    {
         var states = this.states;
-        return delegate {
+        return delegate
+        {
             // Load all states and fill up the queue for the renderer to process.
             // Some considerations:
             // 1) Don't go too fast (too many states could fill up memory)
             // 2) quit once we are at the max tick
-            // 3) In the Unity editor, when the game is played and closed, this thread will keep going. Dunno how to fix this
+            // 3) (TODO) In the Unity editor, when the game is played and closed, this thread will keep going. Dunno how to fix this
             var currentTick = 0;
-            var maxStates = 10;
-            while (currentTick < maxTick) {
-                if (states.Count >= maxStates) {
-                    Thread.Sleep(250); // wait to see if main thread processes some states
+            var maxStates = 15;
+            while (currentTick < maxTick)
+            {
+                if (states.Count >= maxStates)
+                {
+                    Thread.Sleep(100); // wait to see if main thread processes some states
                     //Debug.Log("bg thread 2 fast, halp");
                 }
-                else {
+                else
+                {
                     var curr = SimpleJSON.JSON.Parse(System.IO.File.ReadAllText(levelPrefix + currentTick + ".json"));
                     var trans = SimpleJSON.JSON.Parse(System.IO.File.ReadAllText(levelPrefix + currentTick + "move.json"));
                     states.Enqueue(new SimpleJSON.JSONNode[]{curr, trans});
