@@ -82,7 +82,7 @@ public class TRenderer : MonoBehaviour
             }
             else
             {
-                // nothing to transition to
+                // nothing to transition to.
             }
         }
         else {
@@ -688,25 +688,7 @@ public class TRenderer : MonoBehaviour
             slider.maxValue = maxTick;
             slider.value = 0;
             fromJSON(SimpleJSON.JSON.Parse(File.ReadAllText(FileBrowser.Result[0]+"\\0.json")));
-
-            // kick off loading states for the new game; reset existing loading if needed
-            if (this.stateLoaderThread != null && this.stateLoaderThread.IsAlive)
-            {
-                try
-                {
-                    this.stateLoaderThread.Abort();
-                    this.stateLoaderThread.Join(3000); // might need to wait a bit for bg thread to wrap up
-                }
-                catch (Exception)
-                {
-                    // whatever
-                }
-            }
-
-            this.states = new ConcurrentQueue<SimpleJSON.JSONNode[]>();
-            this.stateLoaderThread = new Thread(new ThreadStart(CreateLoadStates(this.levelPrefix, this.maxTick)));
-            this.stateLoaderThread.Start();
-            
+            ResetStateLoading();
             beginTransitionAnimationToNextState();
         }
     }
@@ -723,11 +705,33 @@ public class TRenderer : MonoBehaviour
             tick = newtick;
             tickUI.text = "TICK " + tick;
             fromJSON(SimpleJSON.JSON.Parse(File.ReadAllText(FileBrowser.Result[0] + "\\" + tick + ".json")));
+            ResetStateLoading();
             beginTransitionAnimationToNextState();
         }
     }
 
-    Action CreateLoadStates(string levelPrefix, int maxTick)
+    private void ResetStateLoading()
+    {
+        // kick off loading states; reset existing loading if needed
+        if (this.stateLoaderThread != null && this.stateLoaderThread.IsAlive)
+        {
+            try
+            {
+                this.stateLoaderThread.Abort();
+                this.stateLoaderThread.Join(3000); // might need to wait a bit for bg thread to wrap up
+            }
+            catch (Exception)
+            {
+                // whatever
+            }
+        }
+
+        this.states = new ConcurrentQueue<SimpleJSON.JSONNode[]>();
+        this.stateLoaderThread = new Thread(new ThreadStart(CreateLoadStates(this.levelPrefix, this.maxTick, this.tick)));
+        this.stateLoaderThread.Start();
+    }
+
+    Action CreateLoadStates(string levelPrefix, int maxTick, int startTick)
     {
         var states = this.states;
         return delegate
@@ -737,7 +741,7 @@ public class TRenderer : MonoBehaviour
             // 1) Don't go too fast (too many states could fill up memory)
             // 2) quit once we are at the max tick
             // 3) (TODO) In the Unity editor, when the game is played and closed, this thread will keep going. Dunno how to fix this
-            var currentTick = 0;
+            var currentTick = startTick;
             var maxStates = 15;
             while (currentTick < maxTick)
             {
