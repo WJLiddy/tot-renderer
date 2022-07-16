@@ -22,9 +22,9 @@ public class TRenderer : MonoBehaviour
     // time to next tick (always in scale of 1 second)
     private float timeToNextTick = 0;
 
-    private Dictionary<long, GameObject> pieces;
+    private Dictionary<long, Pair<GameObject, HPBar>> pieces;
     private Dictionary<GameObject, Vector3[]> moveTargets = new Dictionary<GameObject, Vector3[]>();
-    private ConcurrentQueue<SimpleJSON.JSONNode[]> states = null; // each element is a pair, i.e. (curr, trans)
+    private ConcurrentQueue<Pair<GameState, Move[]>> states = null; // each element is a pair, i.e. (curr, trans)
     private Thread stateLoaderThread = null;
 
     public GameObject[] PlayerUIs;
@@ -69,7 +69,7 @@ public class TRenderer : MonoBehaviour
         }
 
         // Check to see if next states are ready for processing
-        SimpleJSON.JSONNode[] transitionInfo = null;
+        Pair<GameState, Move[]> transitionInfo = null;
         
         if (this.states.IsEmpty || !this.states.TryDequeue(out transitionInfo))
         {
@@ -86,12 +86,12 @@ public class TRenderer : MonoBehaviour
             }
         }
         else {
-            transitionTo(transitionInfo[0]);
-            beginPlayingTransitionAnimations(transitionInfo[0], transitionInfo[1]);
+            transitionTo(transitionInfo.First);
+            beginPlayingTransitionAnimations(transitionInfo.First, transitionInfo.Second);
         }
     }
 
-    public int MaxHPForType(string t, SimpleJSON.JSONNode players, int team)
+    public int MaxHPForType(char t, Player[] players, int team)
     {
         if(team == -2)
         {
@@ -101,10 +101,10 @@ public class TRenderer : MonoBehaviour
 
         switch(t)
         {
-            case "v": return 20;
+            case 'v': return 20;
 
-            case "i":
-                switch(players[team]["inf_level"].AsInt)
+            case 'i':
+                switch(players[team].InfLevel)
                 {
                     case 1: return 30;
                     case 2: return 60;
@@ -112,8 +112,8 @@ public class TRenderer : MonoBehaviour
                 }
                 break;
 
-            case "a":
-                switch (players[team]["arc_level"].AsInt)
+            case 'a':
+                switch (players[team].ArcLevel)
                 {
                     case 1: return 25;
                     case 2: return 35;
@@ -121,8 +121,8 @@ public class TRenderer : MonoBehaviour
                 }
                 break;
 
-            case "c":
-                switch (players[team]["cav_level"].AsInt)
+            case 'c':
+                switch (players[team].CavLevel)
                 {
                     case 1: return 45;
                     case 2: return 90;
@@ -130,13 +130,13 @@ public class TRenderer : MonoBehaviour
                 }
                 break;
 
-            case "h": return 40;
-            case "t": return 50;
-            case "r": return 60;
-            case "b": return 60;
-            case "s": return 60;
-            case "w": return 80;
-            case "g": return 250;
+            case 'h': return 40;
+            case 't': return 50;
+            case 'r': return 60;
+            case 'b': return 60;
+            case 's': return 60;
+            case 'w': return 80;
+            case 'g': return 250;
         }
         //throw error.
         return -1;
@@ -153,17 +153,17 @@ public class TRenderer : MonoBehaviour
     }
 
     // EXCEPTIONALLY slow
-    public Dictionary<long, int[]> IDtoCoord(SimpleJSON.JSONNode previous)
+    public Dictionary<long, int[]> IDtoCoord(Entity[][] previous)
     {
         Dictionary<long, int[]> coords = new Dictionary<long, int[]>();
 
-        for (int x = 0; x != previous.AsArray.Count; ++x)
+        for (int x = 0; x != previous.Length; ++x)
         {
-            for (int y = 0; y != previous.AsArray.Count; ++y)
+            for (int y = 0; y != previous.Length; ++y)
             {
                 if(previous[x][y] != null)
                 {
-                    coords[previous[x][y]["id"].AsLong] = new int[2] { x, y };
+                    coords[previous[x][y].Id] = new int[2] { x, y };
                 }
             }
         }
@@ -197,66 +197,67 @@ public class TRenderer : MonoBehaviour
     }
     
     // run all state transitions
-    public void beginPlayingTransitionAnimations(SimpleJSON.JSONNode previous, SimpleJSON.JSONNode transition)
+    public void beginPlayingTransitionAnimations(GameState previous, Move[] transition)
     {
         moveTargets = new Dictionary<GameObject, Vector3[]>();
-        var ids = IDtoCoord(previous["world_state"]);
-        foreach(var moveset in transition.AsArray)
+        var ids = IDtoCoord(previous.WorldState);
+        foreach(var move in transition)
         {
-            var move = moveset.Value;
-
-            switch (move["command"].Value)
+            switch (move.Command)
             {
                 // fix or start creation.
-                case "f":
-                    pieces[move["id"].AsLong].GetComponent<Animator>().SetTrigger("attack");
+                case 'f':
+                    pieces[move.Id].First.GetComponent<Animator>().SetTrigger("attack");
                     // find the tile position of the player.
-                    var coordStart = ids[move["id"].AsLong];
-                    var coordTarg = ids[move["arg"].AsLong];
+                    var coordStart = ids[move.Id];
+                    var coordTarg = ids[(move as TargetMove).Arg];
                     // hacky fix?
-                    pieces[move["id"].AsLong].transform.eulerAngles = directionForCoord(coordTarg[0] - coordStart[0], coordTarg[1] - coordStart[1]);
+                    pieces[move.Id].First.transform.eulerAngles = directionForCoord(coordTarg[0] - coordStart[0], coordTarg[1] - coordStart[1]);
                     break;
-                case "w":
-                case "r":
-                case "s":
-                case "h":
-                case "b":
-                    pieces[move["id"].AsLong].GetComponent<Animator>().SetTrigger("attack");
-                    pieces[move["id"].AsLong].transform.eulerAngles = directionForCoord(move["arg"][0], move["arg"][1]);
+                case 'w':
+                case 'r':
+                case 's':
+                case 'h':
+                case 'b':
+                    pieces[move.Id].First.GetComponent<Animator>().SetTrigger("attack");
+                    var coords = (move as XyMove).Arg;
+                    pieces[move.Id].First.transform.eulerAngles = directionForCoord(coords[0], coords[1]);
                     break;
-                case "m":
-                    var go = pieces[move["id"].AsLong];
+                case 'm':
+                    var go = pieces[move.Id].First;
                     go.GetComponent<Animator>().SetTrigger("move");
-                    go.transform.eulerAngles = directionForCoord(move["arg"][0], move["arg"][1]);
+                    var coords2 = (move as XyMove).Arg;
+                    go.transform.eulerAngles = directionForCoord(coords2[0], coords2[1]);
                     if (moveTargets.ContainsKey(go))
                     {
-                        moveTargets[go][1] += new Vector3(move["arg"][0] * -GRIDSIZE, 0, move["arg"][1] * GRIDSIZE);
+                        moveTargets[go][1] += new Vector3(coords2[0] * -GRIDSIZE, 0, coords2[1] * GRIDSIZE);
                     }
                     else
                     {
-                        moveTargets[go] = new Vector3[2] { go.transform.position, go.transform.position + new Vector3(move["arg"][0] * -GRIDSIZE, 0, move["arg"][1] * GRIDSIZE) };
+                        moveTargets[go] = new Vector3[2] { go.transform.position, go.transform.position + new Vector3(coords2[0] * -GRIDSIZE, 0, coords2[1] * GRIDSIZE) };
                     }
 
 
                     break;
-                case "k":
-                    pieces[move["id"].AsLong].GetComponent<Animator>().SetTrigger("attack");
-                    coordStart = ids[move["id"].AsLong];
-                    coordTarg = ids[move["arg"].AsLong];
+                case 'k':
+                    pieces[move.Id].First.GetComponent<Animator>().SetTrigger("attack");
+                    coordStart = ids[move.Id];
+                    coordTarg = ids[(move as TargetMove).Arg];
 
-                    if(previous["world_state"][coordStart[0]][coordStart[1]]["type"] == "a")
+                    var prev = previous.WorldState[coordStart[0]][coordStart[1]];
+                    if(prev != null && prev.Type == 'a')
                     {
                         spawnArrow(coordStart[0], coordStart[1], coordTarg[0], coordTarg[1]);
                     }
 
-                    pieces[move["id"].AsLong].transform.eulerAngles = directionForCoord(coordTarg[0] - coordStart[0], coordTarg[1] - coordStart[1]);
+                    pieces[move.Id].First.transform.eulerAngles = directionForCoord(coordTarg[0] - coordStart[0], coordTarg[1] - coordStart[1]);
                     break;
             }
         }
     }
 
     // for teams 1-4, return VIL MIL MAX.
-    public List<int[]> collectPopStats(SimpleJSON.JSONNode state)
+    public List<int[]> collectPopStats(Entity[][] state)
     {
         List<int[]> result = new List<int[]>();
         result.Add(new int[3] { 0, 0, 0 });
@@ -264,28 +265,28 @@ public class TRenderer : MonoBehaviour
         result.Add(new int[3] { 0, 0, 0 });
         result.Add(new int[3] { 0, 0, 0 });
 
-        for (int x = 0; x != state.AsArray.Count; ++x)
+        for (int x = 0; x != state.Length; ++x)
         {
-            for (int y = 0; y != state.AsArray.Count; ++y)
+            for (int y = 0; y != state.Length; ++y)
             {
                 var tile = state[x][y];
-                if (tile != null && tile["team"] >= 0)
+                if (tile != null && tile.Team >= 0)
                 {
-                    var team = tile["team"];
-                    switch (tile["type"].Value)
+                    var team = tile.Team;
+                    switch (tile.Type)
                     {
-                        case "v":
+                        case 'v':
                             result[team][0] += 1;
                             break;
 
-                        case "i":
-                        case "c":
-                        case "a":
+                        case 'i':
+                        case 'c':
+                        case 'a':
                             result[team][1] += 1;
                             break;
 
-                        case "w":
-                        case "h":
+                        case 'w':
+                        case 'h':
                             result[team][2] += 1;
                             break;
                     }
@@ -306,81 +307,94 @@ public class TRenderer : MonoBehaviour
         return tmaxTick - 2;
     }
 
-    public void writePlayerDataToCanvas(SimpleJSON.JSONArray world_state, SimpleJSON.JSONArray players)
+    public void writePlayerDataToCanvas(Entity[][] world_state, Player[] players)
     {
         var popStats = collectPopStats(world_state);
-        for(int i = 0; i != players.Count; ++i)
+        for(int i = 0; i != players.Length; ++i)
         {
-            PlayerUIs[i].transform.Find("Name").GetComponent<Text>().text = players[i]["name"];
-            PlayerUIs[i].transform.Find("Gold").GetComponent<Text>().text = players[i]["gold"];
-            PlayerUIs[i].transform.Find("Wood").GetComponent<Text>().text = players[i]["wood"];
-            PlayerUIs[i].transform.Find("InfLev").GetComponent<Text>().text = players[i]["inf_level"];
-            PlayerUIs[i].transform.Find("ArcLev").GetComponent<Text>().text = players[i]["arc_level"];
-            PlayerUIs[i].transform.Find("CavLev").GetComponent<Text>().text = players[i]["cav_level"];
+            PlayerUIs[i].transform.Find("Name").GetComponent<Text>().text = players[i].Name;
+            PlayerUIs[i].transform.Find("Gold").GetComponent<Text>().text = players[i].Gold + "";
+            PlayerUIs[i].transform.Find("Wood").GetComponent<Text>().text = players[i].Wood + "";
+            PlayerUIs[i].transform.Find("InfLev").GetComponent<Text>().text = players[i].InfLevel + "";
+            PlayerUIs[i].transform.Find("ArcLev").GetComponent<Text>().text = players[i].ArcLevel + "";
+            PlayerUIs[i].transform.Find("CavLev").GetComponent<Text>().text = players[i].CavLevel + "";
             PlayerUIs[i].transform.Find("Pop").GetComponent<Text>().text = "V" + popStats[i][0] + "/M" + popStats[i][1] + "/" + popStats[i][2];
         }
     }
 
     //spaws things and deletes dead.
-    public void transitionTo(SimpleJSON.JSONNode nextState)
+    public void transitionTo(GameState nextState)
     {
-        List<string> piecenames = new List<string>() { "i1", "i2", "i3", "a1", "a2", "a3", "c1", "c2", "c3" };
-
         // see if any exist.
         HashSet<long> seenIDs = new HashSet<long>();
 
-        var ws = nextState["world_state"];
+        var ws = nextState.WorldState;
 
-        for (int x = 0; x < ws.AsArray.Count; ++x)
+        for (int x = 0; x < ws.Length; ++x)
         {
-            for (int y = 0; y < ws.AsArray.Count; ++y)
+            for (int y = 0; y < ws.Length; ++y)
             {
                 var node = ws[x][y];
+                if (node == null)
+                    continue;
 
                 // force update
-                if(node != null && node["constructed"].AsBool && pieces[node["id"].AsLong].name == "CONSTRUCTION")
+                var unitNode = node as Unit;
+                var buildingNode = node as Building;
+                pieces.TryGetValue(node.Id, out var selectedPiecePair);
+                if(buildingNode != null && buildingNode.Constructed && selectedPiecePair.First.name == "CONSTRUCTION")
                 {
-                    SimpleJSON.JSONNode player = nextState[node["team"].AsInt];
-                    pieces[node["id"].AsLong] = loadPieceOfType(x, y, node["type"], node["team"], node["constructed"], nextState["players"].AsArray);
+                    var newPiece = loadPieceOfType(x, y, node.Type, node.Team, buildingNode.Constructed, nextState.Players);
+                    var bar = newPiece.GetComponentInChildren<HPBar>();
+                    selectedPiecePair = new Pair<GameObject, HPBar>(newPiece, bar);
+                    pieces[node.Id] = selectedPiecePair;
                 }
 
 
-                if (node != null && !pieces.ContainsKey(node["id"].AsLong))
+                if (!pieces.ContainsKey(node.Id))
                 {
-                    int team = node["team"];
-                    SimpleJSON.JSONNode player = nextState[node["team"].AsInt];
-                    pieces[node["id"].AsLong] = loadPieceOfType(x, y, node["type"], node["team"], node["constructed"], nextState["players"].AsArray);
+                    int team = node.Team;
+                    var newPiece = loadPieceOfType(x, y, node.Type, node.Team, buildingNode?.Constructed ?? false, nextState.Players);
+                    var bar = newPiece.GetComponentInChildren<HPBar>();
+                    selectedPiecePair = new Pair<GameObject, HPBar>(newPiece, bar);
+                    pieces[node.Id] = selectedPiecePair;
                 }
 
                 if(node != null)
                 {
-                    long nid = node["id"].AsLong;
+                    long nid = node.Id;
                     seenIDs.Add(nid);
 
                     // reload pieces in case rank changes.
-                    if (piecenames.Contains(pieces[node["id"].AsLong].name))
+                    var selectedPieceName = selectedPiecePair.First.name;
+                    var firstchar = selectedPieceName[0];
+                    int level = selectedPieceName[1] - 48; // '0' is 48 in decimal ASCII. so char '1' is 49 and gives us decimal 1.
+                    if (firstchar == 'i' || firstchar == 'a' || firstchar == 'c')
                     {
-                        int team = node["team"];
+                        int team = node.Team;
                         // skeles never upgrade.
                         if(team == -2)
                         {
                             return;
                         }
-                        int inflev = nextState["players"][team]["inf_level"];
-                        int arclev = nextState["players"][team]["arc_level"];
-                        int cavlev = nextState["players"][team]["cav_level"];
+                        int inflev = nextState.Players[team].InfLevel;
+                        int arclev = nextState.Players[team].ArcLevel;
+                        int cavlev = nextState.Players[team].CavLevel;
 
                         if (
-                            (pieces[nid].name.ToCharArray()[0] == 'i' && pieces[nid].name != ("i" + inflev)) ||
-                            (pieces[nid].name.ToCharArray()[0] == 'a' && pieces[nid].name != ("a" + arclev)) ||
-                            (pieces[nid].name.ToCharArray()[0] == 'c' && pieces[nid].name != ("c" + cavlev))
-                            )
+                            (firstchar == 'i' && level != inflev) ||
+                            (firstchar == 'a' && level != arclev) ||
+                            (firstchar == 'c' && level != cavlev)
+                        )
                         {
-                            Destroy(pieces[nid]);
-                            pieces[nid] = loadPieceOfType(x, y, node["type"], node["team"], node["constructed"], nextState["players"].AsArray);
+                            Destroy(selectedPiecePair.First);
+                            var newPiece = loadPieceOfType(x, y, node.Type, node.Team, buildingNode?.Constructed ?? false, nextState.Players);
+                            var bar = newPiece.GetComponentInChildren<HPBar>();
+                            selectedPiecePair = new Pair<GameObject, HPBar>(newPiece, bar);
+                            pieces[nid] = selectedPiecePair;
                         }
                     }
-                    pieces[nid].GetComponentInChildren<HPBar>().setHPBar(node["hp"], MaxHPForType(node["type"], nextState["players"].AsArray, node["team"].AsInt));
+                    selectedPiecePair.Second.setHPBar(node.Hp, MaxHPForType(node.Type, nextState.Players, node.Team));
                 }
             }
         }
@@ -399,12 +413,12 @@ public class TRenderer : MonoBehaviour
         foreach(var k in killList)
         {
             // later - play animation
-            Destroy(pieces[k]);
+            Destroy(pieces[k].First);
             pieces.Remove(k);
         }
 
-        updateMiniMap(nextState["world_state"]);
-        writePlayerDataToCanvas(nextState["world_state"].AsArray,nextState["players"].AsArray);
+        updateMiniMap(nextState.WorldState);
+        writePlayerDataToCanvas(nextState.WorldState, nextState.Players);
     }
 
     public void Clear()
@@ -438,17 +452,17 @@ public class TRenderer : MonoBehaviour
     }
 
     // force jump to this gamestate, clearing up the board.
-    public void fromJSON(SimpleJSON.JSONNode scene)
+    public void fromJSON(GameState scene)
     {
         Clear();
-        pieces = new Dictionary<long, GameObject>();
+        pieces = new Dictionary<long, Pair<GameObject, HPBar>>();
 
-        for (int x = -1; x <= scene["world_state"].AsArray.Count; ++x)
+        for (int x = -1; x <= scene.WorldState.Length; ++x)
         {
-            for (int y = -1; y <= scene["world_state"].AsArray.Count; ++y)
+            for (int y = -1; y <= scene.WorldState.Length; ++y)
             {
                 // barrier
-                if (x == -1 || y == -1 || y == scene["world_state"].AsArray.Count || x == scene["world_state"].AsArray.Count)
+                if (x == -1 || y == -1 || y == scene.WorldState.Length || x == scene.WorldState.Length)
                 {
                     GameObject go = Instantiate(Resources.Load<GameObject>("GamePieces/wall"));
                     go.transform.SetParent(this.transform);
@@ -460,8 +474,8 @@ public class TRenderer : MonoBehaviour
                 }
             }
         }
-        updateMiniMap(scene["world_state"]);
-        writePlayerDataToCanvas(scene["world_state"].AsArray, scene["players"].AsArray);
+        updateMiniMap(scene.WorldState);
+        writePlayerDataToCanvas(scene.WorldState, scene.Players);
     }
 
     public Color colorForTeam(int team)
@@ -493,25 +507,25 @@ public class TRenderer : MonoBehaviour
     }
 
 
-    public void updateMiniMap(SimpleJSON.JSONNode state)
+    public void updateMiniMap(Entity[][] state)
     {
-        for(int x = 0; x != state.AsArray.Count; ++x)
+        for(int x = 0; x != state.Length; ++x)
         {
-            for (int y = 0; y != state.AsArray.Count; ++y)
+            for (int y = 0; y != state.Length; ++y)
             {              
                 minimap.SetPixel(x, y, Color.gray);
                 if (state[x][y] != null)
                 {
-                    switch (state[x][y]["type"].Value)
+                    switch (state[x][y].Type)
                     {
-                        case "t":
+                        case 't':
                             minimap.SetPixel(x, y, Color.green);
                             break;
-                        case "g":
+                        case 'g':
                             minimap.SetPixel(x, y, Color.yellow);
                             break;
                         default:
-                            minimap.SetPixel(x, y, colorForTeam(state[x][y]["team"]));
+                            minimap.SetPixel(x, y, colorForTeam(state[x][y].Team));
                             break;
 
                     }
@@ -521,35 +535,35 @@ public class TRenderer : MonoBehaviour
         minimap.Apply();
     }
  
-    public GameObject loadPieceOfType(int x, int y, string value, int team, bool constructed, SimpleJSON.JSONArray teams)
+    public GameObject loadPieceOfType(int x, int y, char value, int team, bool constructed, Player[] teams)
     {
         GameObject go = null;
 
         switch (value)
         {
-            case "t":
+            case 't':
                 go = Instantiate(Resources.Load<GameObject>("GamePieces/tree"));
                 break;
-            case "g":
+            case 'g':
                 go = Instantiate(Resources.Load<GameObject>("GamePieces/gold"));
                 break;
-            case "v":
+            case 'v':
                 go = Instantiate(Resources.Load<GameObject>("GamePieces/vil"));
                 recolorUnit(go, team);
                 break;
      
                 // doens't hndle level
-            case "i":
-                int inflev = teams[team]["inf_level"];
+            case 'i':
+                int inflev = teams[team].InfLevel;
                 go = Instantiate(Resources.Load<GameObject>("GamePieces/inf" + inflev));
                 go.name = "i" + inflev;
                 recolorUnit(go, team);
                 break;
-            case "a":
+            case 'a':
                 int arclev = 1;
                 if (team != -2)
                 {
-                    arclev = teams[team]["arc_level"];
+                    arclev = teams[team].ArcLevel;
                     go = Instantiate(Resources.Load<GameObject>("GamePieces/arc" + arclev));
                     go.name = "a" + arclev;
                     recolorUnit(go, team);
@@ -559,14 +573,14 @@ public class TRenderer : MonoBehaviour
                 }
 
                 break;
-            case "c":
-                int cavlev = teams[team]["cav_level"];
+            case 'c':
+                int cavlev = teams[team].CavLevel;
                 go = Instantiate(Resources.Load<GameObject>("GamePieces/cav" + cavlev));
                 go.name = "c" + cavlev;
                 recolorUnit(go, team);
                 break;
 
-            case "w":
+            case 'w':
                 if (constructed)
                 {
                     go = Instantiate(Resources.Load<GameObject>("GamePieces/tow"));
@@ -578,7 +592,7 @@ public class TRenderer : MonoBehaviour
                 recolorBuilding(go, team);
                 break;
 
-            case "h":
+            case 'h':
                 if (constructed)
                 {
                     go = Instantiate(Resources.Load<GameObject>("GamePieces/hou"));
@@ -591,7 +605,7 @@ public class TRenderer : MonoBehaviour
                 recolorBuilding(go, team);
                 break;
 
-            case "b":
+            case 'b':
                 if (constructed)
                 {
                     go = Instantiate(Resources.Load<GameObject>("GamePieces/bar"));
@@ -604,7 +618,7 @@ public class TRenderer : MonoBehaviour
                 recolorBuilding(go, team);
                 break;
 
-            case "r":
+            case 'r':
                 if (constructed)
                 {
                     go = Instantiate(Resources.Load<GameObject>("GamePieces/ran"));
@@ -617,7 +631,7 @@ public class TRenderer : MonoBehaviour
                 recolorBuilding(go, team);
                 break;
 
-            case "s":
+            case 's':
                 if (constructed)
                 {
                     go = Instantiate(Resources.Load<GameObject>("GamePieces/sta"));
@@ -645,19 +659,20 @@ public class TRenderer : MonoBehaviour
         return go;
     }
 
-    public void placeNewPiece(SimpleJSON.JSONNode scene, int x, int y)
+    public void placeNewPiece(GameState scene, int x, int y)
     {
-        var node = scene["world_state"][x][y];
+        var node = scene.WorldState[x][y];
         if (node != null)
         {
-            if (pieces.ContainsKey(node["id"].AsLong))
+            if (pieces.ContainsKey(node.Id))
             {
                 // already loaded this (it's part of a building)
                 return;
             }
             
-            var go = loadPieceOfType(x, y, node["type"], node["team"], node["constructed"], scene["players"].AsArray);
-            pieces.Add(node["id"].AsLong, go);
+            var go = loadPieceOfType(x, y, node.Type, node.Team, (node as Building)?.Constructed ?? false, scene.Players);
+            var bar = go.GetComponentInChildren<HPBar>();
+            pieces.Add(node.Id, new Pair<GameObject, HPBar>(go, bar));
         }
     }
 
@@ -687,7 +702,8 @@ public class TRenderer : MonoBehaviour
             timeToNextTick = 1f;
             slider.maxValue = maxTick;
             slider.value = 0;
-            fromJSON(SimpleJSON.JSON.Parse(File.ReadAllText(FileBrowser.Result[0]+"\\0.json")));
+            var parsed = SimpleJSON.JSON.Parse(File.ReadAllText(FileBrowser.Result[0]+"\\0.json"));
+            fromJSON(ToGameState(parsed));
             ResetStateLoading();
             beginTransitionAnimationToNextState();
         }
@@ -704,7 +720,8 @@ public class TRenderer : MonoBehaviour
             timeToNextTick = 1f;
             tick = newtick;
             tickUI.text = "TICK " + tick;
-            fromJSON(SimpleJSON.JSON.Parse(File.ReadAllText(FileBrowser.Result[0] + "\\" + tick + ".json")));
+            var parsed = SimpleJSON.JSON.Parse(File.ReadAllText(FileBrowser.Result[0] + "\\" + tick + ".json"));
+            fromJSON(ToGameState(parsed));
             ResetStateLoading();
             beginTransitionAnimationToNextState();
         }
@@ -726,8 +743,8 @@ public class TRenderer : MonoBehaviour
             }
         }
 
-        this.states = new ConcurrentQueue<SimpleJSON.JSONNode[]>();
-        this.stateLoaderThread = new Thread(new ThreadStart(CreateLoadStates(this.levelPrefix, this.maxTick, this.tick)));
+        this.states = new ConcurrentQueue<Pair<GameState, Move[]>>();
+        this.stateLoaderThread = new Thread(new ThreadStart(CreateLoadStates(this.levelPrefix, this.maxTick, this.tick + 1)));
         this.stateLoaderThread.Start();
     }
 
@@ -742,22 +759,180 @@ public class TRenderer : MonoBehaviour
             // 2) quit once we are at the max tick
             // 3) (TODO) In the Unity editor, when the game is played and closed, this thread will keep going. Dunno how to fix this
             var currentTick = startTick;
-            var maxStates = 15;
+            var maxStates = 20;
             while (currentTick < maxTick)
             {
                 if (states.Count >= maxStates)
                 {
-                    Thread.Sleep(100); // wait to see if main thread processes some states
+                    Thread.Sleep(10); // wait to see if main thread processes some states
                     //Debug.Log("bg thread 2 fast, halp");
                 }
                 else
                 {
                     var curr = SimpleJSON.JSON.Parse(System.IO.File.ReadAllText(levelPrefix + currentTick + ".json"));
                     var trans = SimpleJSON.JSON.Parse(System.IO.File.ReadAllText(levelPrefix + currentTick + "move.json"));
-                    states.Enqueue(new SimpleJSON.JSONNode[]{curr, trans});
+                    states.Enqueue(new Pair<GameState, Move[]>(ToGameState(curr), ToMoves(trans)));
                     currentTick++;
                 }
             }
         };
     }
+
+    private static Move[] ToMoves(SimpleJSON.JSONNode trans)
+    {
+        var result = new Move[trans.Count];
+        var index = 0;
+        foreach (var node in trans.Children) {
+            var id = node["id"].AsLong;
+            var command = node["command"].Value[0];
+            var arg = node["arg"];
+            Move move;
+            try {
+                long target = long.Parse(arg.Value);
+                move = new TargetMove()
+                {
+                    Id = id,
+                    Command = command,
+                    Arg = target
+                };
+            }
+            catch (Exception)
+            {
+                // whoops it's an Xy
+                int[] xy = new int[] {arg[0].AsInt, arg[1].AsInt};
+                move = new XyMove()
+                {
+                    Id = id,
+                    Command = command,
+                    Arg = xy
+                };
+            }
+
+            result[index] = move;
+            index++;
+        }
+
+        return result;
+    }
+
+    private static GameState ToGameState(SimpleJSON.JSONNode jsonState)
+    {
+        // players
+        var playersNode = jsonState["players"];
+        var players = new Player[playersNode.Count];
+        var index = 0;
+        foreach (var node in playersNode.Children)
+        {
+            var player = new Player() {
+                CavLevel = node["cav_level"].AsInt,
+                InfLevel = node["inf_level"].AsInt,
+                ArcLevel = node["arc_level"].AsInt,
+                Gold = node["gold"].AsInt,
+                Wood = node["wood"].AsInt,
+                Name = node["name"].Value
+            };
+
+            players[index] = player;
+            index++;
+        }
+
+        // world state
+        var worldNode = jsonState["world_state"];
+        var size = worldNode.Count;
+        Entity[][] worldState = new Entity[size][];
+        for (var x = 0; x < size; x++) {
+            worldState[x] = new Entity[size];
+            for (var y = 0; y < size; y++) {
+                var entity = worldNode[x][y];
+                if (entity.Tag != SimpleJSON.JSONNodeType.NullValue) {
+                    Entity newEntity;
+                    var id = entity["id"].AsLong;
+                    var type = entity["type"].Value[0];
+                    var hp = entity["hp"].AsInt;
+                    var team = entity["team"].AsInt;
+
+                    if (entity.HasKey("constructed")) {
+                        newEntity = new Building() {
+                            Id = id,
+                            Type = type,
+                            Hp = hp,
+                            Team = team,
+                            Constructed = entity["constructed"].AsBool,
+                            TrainTime = entity["traintime"].AsInt
+                        };
+                    }
+                    else {
+                        newEntity = new Unit() {
+                            Id = id,
+                            Type = type,
+                            Hp = hp,
+                            Team = team
+                        };
+                    }
+
+                    worldState[x][y] = newEntity;
+                }
+            }
+        }
+
+        return new GameState() {
+            WorldState = worldState,
+            Players = players
+        };
+    }
+}
+
+public abstract class Move
+{
+	public long Id {get; set;}
+	public char Command {get;set;}
+	public int? Team {get; set;}
+}
+
+public class TargetMove : Move
+{
+	public long Arg {get;set;}
+}
+
+public class XyMove : Move
+{
+	public int[] Arg {get;set;}
+}
+
+public class Pair<S, T> {
+    public S First {get; set;}
+    public T Second {get; set;}
+
+    public Pair(S first, T second) {
+        First = first;
+        Second = second;
+    }
+}
+
+public abstract class Entity {
+    public long Id {get; set;}
+    public char Type {get; set;}
+    public int Hp {get; set;}
+    public int Team {get; set;}
+}
+
+public class Unit : Entity {}
+
+public class Building : Entity {
+    public bool Constructed {get; set;}
+    public int TrainTime {get; set;}
+}
+
+public class Player {
+    public int CavLevel {get; set;}
+    public int InfLevel {get; set;}
+    public int ArcLevel {get; set;}
+    public int Gold {get; set;}
+    public int Wood {get; set;}
+    public string Name {get; set;}
+}
+
+public class GameState {
+    public Entity[][] WorldState {get; set;}
+    public Player[] Players {get; set;}
 }
