@@ -758,6 +758,10 @@ public class TRenderer : MonoBehaviour
             // 1) Don't go too fast (too many states could fill up memory)
             // 2) quit once we are at the max tick
             // 3) (TODO) In the Unity editor, when the game is played and closed, this thread will keep going. Dunno how to fix this
+            // 4) (TODO) Bug: If animating outpaces the bg thread, then the tick will increment in the UI while none of the units do
+            //    anything. So tick 77 in the json files might only happen at tick 151 or something in the viewed game. Does not seem
+            //    to be much of a problem when the game is compiled and run outside of Unity, especially when animating the units takes
+            //    time (i.e. maybe we have dozens of units on-screen).
             var currentTick = startTick;
             var maxStates = 20;
             while (currentTick < maxTick)
