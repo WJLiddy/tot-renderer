@@ -1,4 +1,4 @@
-﻿/* * * * *
+/* * * * *
  * A simple JSON Parser / builder
  * ------------------------------
  * 
@@ -895,8 +895,8 @@ namespace SimpleJSON
         {
             get
             {
-                if (m_Dict.ContainsKey(aKey))
-                    return m_Dict[aKey];
+                if (m_Dict.TryGetValue(aKey, out var result))
+                    return result;
                 else
                     return new JSONLazyCreator(this, aKey);
             }
@@ -1003,6 +1003,10 @@ namespace SimpleJSON
                 foreach (KeyValuePair<string, JSONNode> N in m_Dict)
                     yield return N.Value;
             }
+        }
+
+        public Dictionary<string, JSONNode>.KeyCollection GetKeys() {
+            return m_Dict.Keys;
         }
 
         internal override void WriteToStringBuilder(StringBuilder aSB, int aIndent, int aIndentInc, JSONTextMode aMode)
