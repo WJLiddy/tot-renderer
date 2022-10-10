@@ -299,7 +299,7 @@ public class TRenderer : MonoBehaviour
     public int getLastTick()
     {
         int tmaxTick = 0;
-        while(File.Exists(levelPrefix + tmaxTick + ".zip"))
+        while(File.Exists(levelPrefix + tmaxTick + "state.zip"))
         {
             tmaxTick++;
         }
@@ -697,7 +697,7 @@ public class TRenderer : MonoBehaviour
             timeToNextTick = 1f;
             slider.maxValue = maxTick;
             slider.value = 0;
-            fromJSON(parseFromZipped(FileBrowser.Result[0],0));
+            fromJSON(parseFromZipped(FileBrowser.Result[0],0,"state"));
             ResetStateLoading();
             beginTransitionAnimationToNextState();
         }
@@ -714,7 +714,7 @@ public class TRenderer : MonoBehaviour
             timeToNextTick = 1f;
             tick = newtick;
             tickUI.text = "TICK " + tick;
-            fromJSON(parseFromZipped(FileBrowser.Result[0], tick));
+            fromJSON(parseFromZipped(FileBrowser.Result[0], tick, "state"));
             ResetStateLoading();
             beginTransitionAnimationToNextState();
         }
@@ -762,8 +762,8 @@ public class TRenderer : MonoBehaviour
                 }
                 else
                 {
-                    var curr = parseFromZipped(levelPrefix, currentTick);
-                    var trans = SimpleJSON.JSON.Parse(System.IO.File.ReadAllText(levelPrefix + currentTick + "move.json"));
+                    var curr = parseFromZipped(levelPrefix, currentTick, "state");
+                    var trans = parseFromZipped(levelPrefix, currentTick, "move");
                     states.Enqueue(new SimpleJSON.JSONNode[]{curr, trans});
                     currentTick++;
                 }
@@ -771,15 +771,15 @@ public class TRenderer : MonoBehaviour
         };
     }
 
-    private SimpleJSON.JSONNode parseFromZipped(string levelPrefix, int currentTick)
+    private SimpleJSON.JSONNode parseFromZipped(string levelPrefix, int currentTick, string fileName)
     {
-        Debug.Log("unpacking: " + levelPrefix + "\\" + currentTick + ".zip");
+        Debug.Log("unpacking: " + levelPrefix + "\\" + currentTick + fileName + ".zip");
         //unzip dis bitch
-        ZipUtility.UncompressFromZip(levelPrefix + "\\" + currentTick + ".zip", null, levelPrefix + "\\" + currentTick + "\\");
+        ZipUtility.UncompressFromZip(levelPrefix + "\\" + currentTick + fileName + ".zip", null, levelPrefix + "\\" + currentTick + fileName + "\\");
         // get the file and parse it
-        var parsed = SimpleJSON.JSON.Parse(System.IO.File.ReadAllText(levelPrefix + "\\" + currentTick + "\\state.json"));
+        var parsed = SimpleJSON.JSON.Parse(System.IO.File.ReadAllText(levelPrefix + "\\" + currentTick + fileName + "\\" + fileName + ".json"));
         // Got the data, delete.
-        Directory.Delete(levelPrefix + "\\" + currentTick, true);
+        Directory.Delete(levelPrefix + "\\" + currentTick + fileName, true);
         return parsed;
     }
 }
