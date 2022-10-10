@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.SharpZipLib.Utils;
 
 public class TRenderer : MonoBehaviour
 {
@@ -295,10 +296,10 @@ public class TRenderer : MonoBehaviour
         return result;
     }
 
-    public int getGameEnd()
+    public int getLastTick()
     {
         int tmaxTick = 0;
-        while(File.Exists(levelPrefix + tmaxTick + ".json"))
+        while(File.Exists(levelPrefix + tmaxTick + ".zip"))
         {
             tmaxTick++;
         }
@@ -682,12 +683,21 @@ public class TRenderer : MonoBehaviour
         if (FileBrowser.Success)
         {
             levelPrefix = FileBrowser.Result[0] + "\\";
-            maxTick = getGameEnd();
+            maxTick = getLastTick();
+
+            if (maxTick == -2)
+            {
+                Debug.Log("Invalid end of game");
+                //if maxtick is zero we need to return.
+                yield return null;
+            }
+
+            Debug.Log("Loaded game with " + maxTick + "states.");
             tick = 0;
             timeToNextTick = 1f;
             slider.maxValue = maxTick;
             slider.value = 0;
-            fromJSON(SimpleJSON.JSON.Parse(File.ReadAllText(FileBrowser.Result[0]+"\\0.json")));
+            fromJSON(parseFromZipped(FileBrowser.Result[0],0));
             ResetStateLoading();
             beginTransitionAnimationToNextState();
         }
@@ -704,7 +714,7 @@ public class TRenderer : MonoBehaviour
             timeToNextTick = 1f;
             tick = newtick;
             tickUI.text = "TICK " + tick;
-            fromJSON(SimpleJSON.JSON.Parse(File.ReadAllText(FileBrowser.Result[0] + "\\" + tick + ".json")));
+            fromJSON(parseFromZipped(FileBrowser.Result[0], tick));
             ResetStateLoading();
             beginTransitionAnimationToNextState();
         }
@@ -752,12 +762,24 @@ public class TRenderer : MonoBehaviour
                 }
                 else
                 {
-                    var curr = SimpleJSON.JSON.Parse(System.IO.File.ReadAllText(levelPrefix + currentTick + ".json"));
+                    var curr = parseFromZipped(levelPrefix, currentTick);
                     var trans = SimpleJSON.JSON.Parse(System.IO.File.ReadAllText(levelPrefix + currentTick + "move.json"));
                     states.Enqueue(new SimpleJSON.JSONNode[]{curr, trans});
                     currentTick++;
                 }
             }
         };
+    }
+
+    private SimpleJSON.JSONNode parseFromZipped(string levelPrefix, int currentTick)
+    {
+        Debug.Log("unpacking: " + levelPrefix + "\\" + currentTick + ".zip");
+        //unzip dis bitch
+        ZipUtility.UncompressFromZip(levelPrefix + "\\" + currentTick + ".zip", null, levelPrefix + "\\" + currentTick + "\\");
+        // get the file and parse it
+        var parsed = SimpleJSON.JSON.Parse(System.IO.File.ReadAllText(levelPrefix + "\\" + currentTick + "\\state.json"));
+        // Got the data, delete.
+        Directory.Delete(levelPrefix + "\\" + currentTick, true);
+        return parsed;
     }
 }
