@@ -23,17 +23,23 @@ public class TRenderer : MonoBehaviour
     // time to next tick (always in scale of 1 second)
     private float timeToNextTick = 0;
 
+    // id to piece GO
     private Dictionary<long, GameObject> pieces;
+    // where to move each GO
     private Dictionary<GameObject, Vector3[]> moveTargets = new Dictionary<GameObject, Vector3[]>();
-    private ConcurrentQueue<SimpleJSON.JSONNode[]> states = null; // each element is a pair, i.e. (curr, trans)
+
+    // each element is a pair, i.e. (curr, trans)
+    private ConcurrentQueue<SimpleJSON.JSONNode[]> states = null;
     private Thread stateLoaderThread = null;
 
     public GameObject[] PlayerUIs;
     public Text fileUI;
     public Text tickUI;
 
-
     public Slider slider;
+
+    // needed to redraw the minimap viewport
+    public SimpleJSON.JSONNode currentState;
 
     // Start is called before the first frame update
     void Start()
@@ -62,6 +68,7 @@ public class TRenderer : MonoBehaviour
             beginTransitionAnimationToNextState();
             slider.value = tick;
         }
+        updateMiniMap();
     }
 
     void beginTransitionAnimationToNextState()
@@ -339,17 +346,17 @@ public class TRenderer : MonoBehaviour
             {
                 var node = ws[x][y];
 
-                // force update
+                // was building completed?
                 if(node != null && node["constructed"].AsBool && pieces[node["id"].AsLong].name == "CONSTRUCTION")
                 {
-                    SimpleJSON.JSONNode player = nextState[node["team"].AsInt];
+                    // yes, reload building, also destroy the old one.
+                    Destroy(pieces[node["id"].AsLong]);
                     pieces[node["id"].AsLong] = loadPieceOfType(x, y, node["type"], node["team"], node["constructed"], nextState["players"].AsArray);
                 }
 
-
+                // Did something new spawn?
                 if (node != null && !pieces.ContainsKey(node["id"].AsLong))
                 {
-                    int team = node["team"];
                     SimpleJSON.JSONNode player = nextState[node["team"].AsInt];
                     pieces[node["id"].AsLong] = loadPieceOfType(x, y, node["type"], node["team"], node["constructed"], nextState["players"].AsArray);
                 }
@@ -400,7 +407,7 @@ public class TRenderer : MonoBehaviour
 
         foreach(var k in killList)
         {
-            // later - play animation
+            // could play death animation (but too much work)
             Destroy(pieces[k]);
             pieces.Remove(k);
         }
@@ -506,8 +513,14 @@ public class TRenderer : MonoBehaviour
         minimap.Apply();
     }
 
+    public void updateMiniMap()
+    {
+        updateMiniMap(currentState);
+    }
+
     public void updateMiniMap(SimpleJSON.JSONNode state)
     {
+        currentState = state;
         for(int x = 0; x != state.AsArray.Count; ++x)
         {
             for (int y = 0; y != state.AsArray.Count; ++y)
@@ -661,6 +674,7 @@ public class TRenderer : MonoBehaviour
         var hp = Instantiate(Resources.Load<GameObject>("GamePieces/HPBar"));
         hp.transform.SetParent(go.transform);
         hp.transform.position = new Vector3(go.transform.position.x, 2f, go.transform.position.z);
+
         return go;
     }
 
@@ -676,6 +690,7 @@ public class TRenderer : MonoBehaviour
             }
             
             var go = loadPieceOfType(x, y, node["type"], node["team"], node["constructed"], scene["players"].AsArray);
+            go.GetComponentInChildren<HPBar>().setHPBar(node["hp"], MaxHPForType(node["type"], scene["players"].AsArray, node["team"].AsInt));
             pieces.Add(node["id"].AsLong, go);
         }
     }

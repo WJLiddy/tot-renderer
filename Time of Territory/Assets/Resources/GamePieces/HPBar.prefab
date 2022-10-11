@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7115910561026401651}
   - component: {fileID: 7115910561026401648}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: Front
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -27,6 +27,7 @@ Transform:
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: -0.01}
   m_LocalScale: {x: 1, y: 0.2, z: 1}
+  m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7115910561694604603}
   m_RootOrder: 1
@@ -93,7 +94,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7115910561634463264}
   - component: {fileID: 7115910561634463265}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: Back
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -110,6 +111,7 @@ Transform:
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 0.2, z: 1}
+  m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7115910561694604603}
   m_RootOrder: 0
@@ -176,7 +178,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7115910561694604603}
   - component: {fileID: 3888741791457003255}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: HPBar
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -193,6 +195,7 @@ Transform:
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 1.37, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 7115910561634463264}
   - {fileID: 7115910561026401651}
