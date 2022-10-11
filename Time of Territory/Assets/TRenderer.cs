@@ -32,7 +32,6 @@ public class TRenderer : MonoBehaviour
     public Text fileUI;
     public Text tickUI;
 
-    public bool showFOW = false;
 
     public Slider slider;
 
@@ -40,6 +39,7 @@ public class TRenderer : MonoBehaviour
     void Start()
     {
         timeToNextTick = 1f;
+        clearMiniMap();
     }
 
     // Update is called once per frame
@@ -50,6 +50,7 @@ public class TRenderer : MonoBehaviour
             return;
         }
 
+        getViewportTileDimensions();
         moveAllToTarget();
         timeToNextTick -= Time.deltaTime;
         if (timeToNextTick <= 0)
@@ -493,6 +494,17 @@ public class TRenderer : MonoBehaviour
         return scene[x][y]["id"];
     }
 
+    public void clearMiniMap()
+    {
+        for (int x = 0; x != 96; ++x)
+        {
+            for (int y = 0; y != 96; ++y)
+            {
+                minimap.SetPixel(x, y, Color.gray);
+            }
+        }
+        minimap.Apply();
+    }
 
     public void updateMiniMap(SimpleJSON.JSONNode state)
     {
@@ -519,6 +531,12 @@ public class TRenderer : MonoBehaviour
                 }
             }
         }
+
+        var v = getViewportTileDimensions();
+        plotLine((int)v[0].x, (int)v[0].y, (int)v[1].x, (int)v[1].y);
+        plotLine((int)v[1].x, (int)v[1].y, (int)v[2].x, (int)v[2].y);
+        plotLine((int)v[2].x, (int)v[2].y, (int)v[3].x, (int)v[3].y);
+        plotLine((int)v[3].x, (int)v[3].y, (int)v[0].x, (int)v[0].y);
         minimap.Apply();
     }
  
@@ -679,7 +697,7 @@ public class TRenderer : MonoBehaviour
         // Dialog is closed
         // Print whether the user has selected some files/folders or cancelled the operation (FileBrowser.Success)
 
-        fileUI.text = Path.GetFileName(FileBrowser.Result[0]);
+
         if (FileBrowser.Success)
         {
             levelPrefix = FileBrowser.Result[0] + "\\";
@@ -687,19 +705,21 @@ public class TRenderer : MonoBehaviour
 
             if (maxTick == -2)
             {
-                Debug.Log("Invalid end of game");
-                //if maxtick is zero we need to return.
-                yield return null;
+                fileUI.text = Path.GetFileName("Invalid Folder.");
+                levelPrefix = null;
             }
-
-            Debug.Log("Loaded game with " + maxTick + "states.");
-            tick = 0;
-            timeToNextTick = 1f;
-            slider.maxValue = maxTick;
-            slider.value = 0;
-            fromJSON(parseFromZipped(FileBrowser.Result[0],0,"state"));
-            ResetStateLoading();
-            beginTransitionAnimationToNextState();
+            else
+            {
+                fileUI.text = Path.GetFileName(FileBrowser.Result[0]);
+                Debug.Log("Loaded game with " + maxTick + "states.");
+                tick = 0;
+                timeToNextTick = 1f;
+                slider.maxValue = maxTick;
+                slider.value = 0;
+                fromJSON(parseFromZipped(FileBrowser.Result[0], 0, "state"));
+                ResetStateLoading();
+                beginTransitionAnimationToNextState();
+            }
         }
     }
 
@@ -717,6 +737,41 @@ public class TRenderer : MonoBehaviour
             fromJSON(parseFromZipped(FileBrowser.Result[0], tick, "state"));
             ResetStateLoading();
             beginTransitionAnimationToNextState();
+        }
+    }
+
+
+    private List<Vector2> getViewportTileDimensions()
+    {
+        RaycastHit hit;
+        Vector2[] bounds = new Vector2[] { Vector2.zero, new Vector2(Screen.width, 0), new Vector2(Screen.width, Screen.height), new Vector2(0, Screen.height)};
+        List<Vector2> vals = new List<Vector2>();
+        // lower left!
+        foreach (var v in bounds)
+        {
+            Ray ray = Camera.main.ScreenPointToRay(v);
+
+            if (Physics.Raycast(ray, out hit))
+            {
+                vals.Add(new Vector2(-(hit.point.x / GRIDSIZE), hit.point.z / GRIDSIZE));
+            }
+        }
+        return vals;
+    }
+
+    void plotLine(int x0, int y0, int x1, int y1)
+    {
+        int dx = Mathf.Abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+        int dy = -Mathf.Abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+        int err = dx + dy, e2; /* error value e_xy */
+
+        for (; ; )
+        {  /* loop */
+            minimap.SetPixel(x0, y0, Color.white);
+            if (x0 == x1 && y0 == y1) break;
+            e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; } /* e_xy+e_x > 0 */
+            if (e2 <= dx) { err += dx; y0 += sy; } /* e_xy+e_y < 0 */
         }
     }
 

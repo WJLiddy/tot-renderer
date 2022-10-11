@@ -39,11 +39,6 @@ public class TSettings : MonoBehaviour
         gameObject.SetActive(false);
     }
 
-    public void showFOW()
-    {
-        tr.showFOW = !tr.showFOW;
-    }
-
     public void showTickBar()
     {
         tickBar.SetActive(!tickBar.activeSelf);
